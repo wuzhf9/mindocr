@@ -227,7 +227,7 @@ class MLM(nn.Cell):
         feature_v_seq = self.MLM_SequenceModeling_mask(input, src_mask=None)
         # position embedding layer
         pos_emb = self.pos_embedding(label_pos)
-        pos_emb = self.w0_linear(pos_emb.unsqueeze(2)).transpose((0, 2, 1))
+        pos_emb = self.w0_linear(pos_emb.expand_dims(2)).transpose((0, 2, 1))
         # fusion position embedding with features V & generate mask_c
         att_map_sub = self.active(pos_emb + self.wv(feature_v_seq))
         att_map_sub = self.we(att_map_sub)   # b,256,1
@@ -322,7 +322,7 @@ class MLM_VRM(nn.Cell):
                 if ratio >= 1:
                     condition = ops.tile(Tensor(mnp.arange(b))[:, None, None],
                                          (1, mask_c.shape[-2], mask_c.shape[-1])) < ratio
-                    character_mask = ops.where(condition, mask_c, character_mask)
+                    character_mask = mnp.where(condition, mask_c, character_mask)
                 else:
                     character_mask = mask_c
                 input = input * (1 - character_mask.transpose((0, 2, 1)))

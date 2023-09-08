@@ -27,7 +27,7 @@ from mindformers.modules.transformer.transformer import (
 
 import mindspore as ms
 import mindspore.common.dtype as mstype
-from mindspore import _checkparam as Validator
+# from mindspore import _checkparam as Validator
 from mindspore import log as logger
 from mindspore import nn
 from mindspore.common.parameter import Parameter
@@ -38,6 +38,7 @@ from mindspore.nn.cell import Cell
 from mindspore.ops import functional as F
 from mindspore.ops import operations as P
 from mindspore.parallel._utils import _get_parallel_mode, _is_sharding_propagation
+from mindspore._checkparam import Validator
 
 _default_tfmer_cfg = dict(
     d_model=512, nhead=8, d_inner=2048, dropout=0.1, activation="relu"  # 1024
