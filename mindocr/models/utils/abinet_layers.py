@@ -27,7 +27,8 @@ from mindformers.modules.transformer.transformer import (
 
 import mindspore as ms
 import mindspore.common.dtype as mstype
-from mindspore import _checkparam as Validator
+# from mindspore import _checkparam as Validator
+from mindspore._checkparam import Validator
 from mindspore import log as logger
 from mindspore import nn
 from mindspore.common.parameter import Parameter
