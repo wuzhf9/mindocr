@@ -14,6 +14,8 @@ __all__ = [
     "RecAttnLabelEncode",
     "RecMasterLabelEncode",
     "VisionLANLabelEncode",
+    "CANLabelEncode",
+    "CANPadding",
     "RecResizeImg",
     "RecResizeNormForInfer",
     "SVTRRecResizeImg",
@@ -133,6 +135,58 @@ class RecCTCLabelEncode(object):
         #
         data["text_length"] = len(data["label"])
         data["text_padded"] = data["label"] + " " * (self.max_text_len - len(data["label"]))
+
+        return data
+
+
+class CANLabelEncode(RecCTCLabelEncode):
+    def __init__(
+        self, max_text_len, character_dict_path=None, use_space_char=False, blank_at_last=True, lower=False, **kwargs
+    ):
+        super(CANLabelEncode, self).__init__(
+            max_text_len, character_dict_path, use_space_char, blank_at_last, lower
+        )
+        
+    def __call__(self, data: dict):
+        label = data["label"]
+        if isinstance(label, str):
+            label = label.strip().split()
+        label.append("eos")
+        
+        char_indices = str2idx(label, self.dict, max_text_len=self.max_text_len, lower=self.lower)
+        
+        if char_indices is None:
+            char_indices = []
+        data["label"] = np.array(char_indices, dtype=np.int32)
+        return data
+
+
+class CANPadding:
+    def __init__(
+        self, max_height, max_width, max_length, **kwargs
+    ):
+        self.max_height = max_height
+        self.max_width = max_width
+        self.max_length = max_length
+
+    def __call__(self, data: dict):
+        C, H, W = data["image"].shape
+        L = data["label"].shape[0]
+
+        image = np.zeros((C, self.max_height, self.max_width), dtype=data["image"].dtype)
+        image_mask = np.zeros((1, self.max_height, self.max_width))
+        label = np.zeros((self.max_length,), dtype=data["label"].dtype)
+        label_mask = np.zeros((self.max_length,))
+
+        image[:, :H, :W] = data["image"]
+        image_mask[:, :H, :W] = 1
+        label[:L] = data["label"]
+        label_mask[:L] = 1
+
+        data["image"] = image
+        data["image_mask"] = image_mask
+        data["label"] = label
+        data["label_mask"] = label_mask
 
         return data
 
