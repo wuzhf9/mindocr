@@ -12,6 +12,7 @@ supported_heads = [
     'RobustScannerHead',
     'VisionLANHead',
     'ABINetHead',
+    'CANHead',
 ]
 from .cls_head import MobileNetV3Head
 from .conv_head import ConvHead
@@ -21,6 +22,7 @@ from .det_fce_head import FCEHead
 from .det_pse_head import PSEHead
 from .rec_abinet_head import ABINetHead
 from .rec_attn_head import AttentionHead
+from .rec_can_head import CANHead
 from .rec_ctc_head import CTCHead
 from .rec_master_decoder import MasterDecoder
 from .rec_robustscanner_head import RobustScannerHead
