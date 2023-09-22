@@ -2,8 +2,7 @@ import math
 
 import mindspore as ms
 from mindspore import nn, ops
-
-from ..utils import GRUCell
+from mindspore.common.initializer import initializer, HeUniform
 
 __all__ = ["CANHead"]
 
@@ -119,7 +118,7 @@ class AttDecoder(nn.Cell):
 
         self.init_weight = nn.Dense(out_channels, hidden_size)
         self.embedding = nn.Embedding(word_num, input_size)
-        self.word_input_gru = GRUCell(input_size, hidden_size)
+        self.word_input_gru = nn.GRUCell(input_size, hidden_size)
         self.word_attention = Attention(hidden_size, attention_dim)
         self.encoder_feature_conv = nn.Conv2d(out_channels, attention_dim, kernel_size=word_conv_kernel,
                                               pad_mode="pad", padding=word_conv_kernel//2)
@@ -143,13 +142,13 @@ class AttDecoder(nn.Cell):
         height, width = cnn_features.shape[2:]
 
         images_mask = images_mask[:, :, ::self.ratio, ::self.ratio]
+        pos_embedding = self.pos_embedding(images_mask[:, 0, :, :])
         word_probs = ops.zeros((batch_size, num_steps, self.word_num))
         word_alpha_sum = ops.zeros((batch_size, 1, height, width))
 
         hidden = self._init_hidden(cnn_features, images_mask)
         counting_context_weighted = self.counting_context_weight(counting_preds)
         cnn_features_trans = self.encoder_feature_conv(cnn_features)
-        pos_embedding = self.pos_embedding(images_mask[:, 0, :, :])
         cnn_features_trans = cnn_features_trans + pos_embedding
 
         word = ops.ones(batch_size, dtype=ms.int32)
@@ -187,6 +186,19 @@ class CANHead(nn.Cell):
         self.counting_decoder1 = CountingDecoder(in_channels, out_channels, kernel_size=3)
         self.counting_decoder2 = CountingDecoder(in_channels, out_channels, kernel_size=5)
         self.decoder = AttDecoder(**attdecoder_args, ratio=ratio)
+
+        self._init_weights()
+
+    def _init_weights(self):
+        for _, cell in self.cells_and_names():
+            if isinstance(cell, nn.Conv2d):
+                cell.weight.set_data(
+                    initializer(HeUniform(math.sqrt(5)), cell.weight.shape, cell.weight.dtype)
+                )
+            elif isinstance(cell, nn.Dense):
+                cell.weight.set_data(
+                    initializer(HeUniform(math.sqrt(5)), cell.weight.shape, cell.weight.dtype)
+                )
 
     def construct(self, cnn_features, other_inputs, is_train=True):
         images_mask, labels = other_inputs

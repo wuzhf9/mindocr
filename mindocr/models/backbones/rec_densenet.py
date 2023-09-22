@@ -1,5 +1,6 @@
 import math
 from mindspore import nn, ops
+from mindspore.common.initializer import initializer, HeUniform
 
 from ._registry import register_backbone, register_backbone_class
 
@@ -82,6 +83,8 @@ class Rec_DenseNet(nn.Cell):
         nChannels = nOutChannels
         self.dense3 = self._make_dense(nChannels, growthRate, nDenseBlocks, use_bottleneck, use_dropout)
 
+        self._init_weights()
+
     def _make_dense(self, nChannels, growthRate, nDenseBlocks, use_bottleneck, use_dropout):
         layers = []
         for _ in range(nDenseBlocks):
@@ -91,6 +94,13 @@ class Rec_DenseNet(nn.Cell):
                 layers.append(SingleLayer(nChannels, growthRate, use_dropout))
             nChannels += growthRate
         return nn.SequentialCell(layers)
+
+    def _init_weights(self):
+        for _, cell in self.cells_and_names():
+            if isinstance(cell, nn.Conv2d):
+                cell.weight.set_data(
+                    initializer(HeUniform(math.sqrt(5)), cell.weight.shape, cell.weight.dtype)
+                )
 
     def construct(self, x):
         out = self.conv1(x)
