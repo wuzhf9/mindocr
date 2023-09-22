@@ -1,15 +1,17 @@
 """Metric for accuracy evaluation."""
 import logging
 import re
+import numpy as np
 
 from rapidfuzz.distance import Levenshtein
+from difflib import SequenceMatcher
 
 import mindspore as ms
 from mindspore import nn
 
 from ..utils.misc import AllReduce
 
-__all__ = ["RecMetric"]
+__all__ = ["RecMetric", "CANMetric"]
 _logger = logging.getLogger(__name__)
 
 
@@ -156,6 +158,78 @@ class RecMetric(nn.Metric):
         norm_edit_distance = float((1 - norm_edit_dis / total_num).asnumpy())
 
         return {"acc": sequence_accurancy, "norm_edit_distance": norm_edit_distance}
+
+
+class CANMetric(nn.Metric):
+    def __init__(self, device_num=1, **kwargs):
+        super(CANMetric, self).__init__()
+        self.clear()
+        self.device_num = device_num
+        self.all_reduce = AllReduce(reduce="sum") if device_num > 1 else None
+        self.metric_names = ["exp_rate", "word_rate"]
+
+    def clear(self):
+        self._word_right = ms.Tensor(0.0, dtype=ms.float32)
+        self._exp_right = ms.Tensor(0.0, dtype=ms.float32)
+        self._total_length = ms.Tensor(0, dtype=ms.int32)
+        self._total_batch = ms.Tensor(0, dtype=ms.int32)
+
+    def update(self, *inputs):
+        if len(inputs) != 2:
+            raise ValueError("Length of inputs should be 2")
+        preds, gt = inputs
+        preds = preds["preds"]
+        labels, labels_mask = gt[0], gt[1]
+        if isinstance(labels, ms.Tensor):
+            labels = labels.asnumpy()
+            labels_mask = labels_mask.asnumpy()
+        word_scores = [
+            SequenceMatcher(
+                None,
+                s1[:int(np.sum(s3))],
+                s2[:int(np.sum(s3))],
+                autojunk=False).ratio() * (
+                    len(s1[:int(np.sum(s3))]) + len(s2[:int(np.sum(s3))])) /
+            len(s1[:int(np.sum(s3))]) / 2
+            for s1, s2, s3 in zip(labels, preds, labels_mask)
+        ]
+
+        line_right = 0
+        batch_size, word_length = labels.shape[:2]
+        for i in range(batch_size):
+            if word_scores[i] == 1:
+                line_right += 1
+
+        word_rate = np.mean(word_scores)
+        exp_rate = line_right / batch_size
+
+        self._word_right += word_rate * word_length
+        self._exp_right += exp_rate * batch_size
+        self._total_length += word_length
+        self._total_batch += batch_size
+
+    def eval(self):
+        if self._total_length == 0:
+            raise RuntimeError("Word rate can not be calculated, because the number of words is 0.")
+        if self._total_batch == 0:
+            raise RuntimeError("Exp rate can not be calculated, because the number of samples is 0.")
+
+        if self.all_reduce:
+            # sum over all devices
+            word_right = self.all_reduce(self._word_right)
+            exp_right = self.all_reduce(self._exp_right)
+            total_length = self.all_reduce(self._total_length)
+            total_batch = self.all_reduce(self._total_batch)
+        else:
+            word_right = self._word_right
+            exp_right = self._exp_right
+            total_length = self._total_length
+            total_batch = self._total_batch
+
+        final_word_rate = float((word_right / total_length).asnumpy())
+        final_exp_rate = float((exp_right / total_batch).asnumpy())
+
+        return {"ExpRate": final_exp_rate, "WordRate": final_word_rate}
 
 
 if __name__ == "__main__":

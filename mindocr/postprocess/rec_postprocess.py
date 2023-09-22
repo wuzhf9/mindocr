@@ -8,7 +8,7 @@ import numpy as np
 
 from mindspore import Tensor
 
-__all__ = ["RecCTCLabelDecode", "RecAttnLabelDecode", "RecMasterLabelDecode", "VisionLANPostProcess", "SARLabelDecode"]
+__all__ = ["RecCTCLabelDecode", "RecAttnLabelDecode", "RecMasterLabelDecode", "VisionLANPostProcess", "SARLabelDecode", "CANLabelDecode"]
 _logger = logging.getLogger(__name__)
 
 
@@ -535,3 +535,40 @@ class SARLabelDecode(object):
 
     def get_ignored_tokens(self):
         return [self.padding_idx]
+
+
+class CANLabelDecode(RecCTCLabelDecode):
+    def __init__(
+        self,
+        character_dict_path=None,
+        use_space_char=False,
+        blank_at_last=True,
+        lower=False,
+    ):
+        super(CANLabelDecode, self).__init__(character_dict_path, use_space_char, blank_at_last, lower)
+
+    def decode(self, text_index, pred_prob=None):
+        result_list = []
+        batch_size = len(text_index)
+        for batch_idx in range(batch_size):
+            seq_end = text_index[batch_idx].argmin(0)
+            idx_list = text_index[batch_idx][:seq_end].tolist()
+            symbol_list = [self.character[idx] for idx in idx_list]
+            probs = []
+            if pred_prob is not None:
+                probs = pred_prob[batch_idx][:len(symbol_list)].tolist()
+
+            result_list.append([' '.join(symbol_list), probs])
+        return result_list
+
+    def __call__(self, preds, labels=None, **kwargs):
+        pred_prob, _, _, _ = preds
+        if not isinstance(pred_prob, np.ndarray):
+            pred_prob = pred_prob.asnumpy()
+        pred_idx = pred_prob.argmax(axis=2)
+        text = self.decode(pred_idx)
+
+        if labels is None:
+            return {"texts": text, "preds": pred_prob}
+        label = self.decode(labels[0])
+        return {"texts": text, "preds": pred_prob, "labels": label}
