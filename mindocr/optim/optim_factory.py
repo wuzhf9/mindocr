@@ -189,6 +189,15 @@ def create_optimizer(
             weight_decay=weight_decay,
             **opt_args,
         )
+    elif opt == "adadelta":
+        opt_args = _collect_args(kwargs, nn.Adadelta)
+        optimizer = nn.Adadelta(
+            params = params,
+            learning_rate=lr,
+            weight_decay=weight_decay,
+            loss_scale=loss_scale,
+            **opt_args,
+        )
     else:
         raise ValueError(f"Invalid optimizer: {opt}")
 
