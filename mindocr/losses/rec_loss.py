@@ -4,7 +4,7 @@ import mindspore as ms
 from mindspore import Tensor, nn, ops
 from mindspore.nn.loss.loss import LossBase
 
-__all__ = ["CTCLoss", "AttentionLoss", "VisionLANLoss"]
+__all__ = ["CTCLoss", "AttentionLoss", "VisionLANLoss", "CANLoss"]
 
 
 class CTCLoss(LossBase):
@@ -173,4 +173,46 @@ class SARLoss(LossBase):
         inputs = ops.reshape(predict, (-1, num_classes))
         targets = ops.reshape(label, (-1,))
         loss = self.loss_func(inputs, targets)
+        return loss
+
+
+class CANLoss(LossBase):
+    def __init__(self, ratio, out_channels, use_label_mask, tag, **kwargs):
+        super(CANLoss, self).__init__()
+        self.ratio = ratio
+        self.out_channels = out_channels
+        self.use_label_mask = use_label_mask
+        self.ignore = [0, 1, 107, 108, 109, 110] if tag else []
+        self.cross = nn.loss.CrossEntropyLoss(reduction="none") if use_label_mask else nn.loss.CrossEntropyLoss()
+        self.counting_loss = nn.loss.SmoothL1Loss(reduction="mean")
+
+    def _gen_counting_label(self, labels):
+        B, L = labels.shape
+        counting_labels = ops.zeros((B, self.out_channels))
+        for i in range(B):
+            for j in range(L):
+                k = int(labels[i][j])
+                if k in self.ignore:
+                    continue
+                else:
+                    counting_labels[i][k] += 1
+        return counting_labels
+
+    def construct(self, preds, labels, labels_mask):
+        word_probs = preds[0]
+        counting_preds = preds[1]
+        counting_preds1 = preds[2]
+        counting_preds2 = preds[3]
+
+        counting_labels = self._gen_counting_label(labels)
+        counting_loss = self.counting_loss(counting_preds, counting_labels) + \
+                        self.counting_loss(counting_preds1, counting_labels) + \
+                        self.counting_loss(counting_preds2, counting_labels)
+        
+        _, _, C = word_probs.shape
+        word_loss = self.cross(ops.reshape(word_probs, (-1, C)), ops.reshape(labels, (-1,)))
+        average_word_loss = (word_loss * ops.reshape(labels_mask, (-1,))).sum() / (labels_mask.sum() + 1e-10) \
+                            if self.use_label_mask else word_loss
+
+        loss = counting_loss + average_word_loss
         return loss
