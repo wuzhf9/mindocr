@@ -137,7 +137,7 @@ class AttDecoder(nn.Cell):
         average = self.init_weight(average)
         return ops.tanh(average)
 
-    def construct(self, cnn_features, labels, counting_preds, images_mask, is_train=True):
+    def construct(self, cnn_features, labels, counting_preds, images_mask):
         batch_size, num_steps = labels.shape
         height, width = cnn_features.shape[2:]
 
@@ -168,7 +168,7 @@ class AttDecoder(nn.Cell):
             word_prob = self.word_convert(word_out_state)
             word_probs[:, i] = word_prob
 
-            if is_train:
+            if self.training:
                 word = labels[:, i]
             else:
                 word = ops.argmax(word_prob, dim=1)
@@ -200,7 +200,7 @@ class CANHead(nn.Cell):
                     initializer(HeUniform(math.sqrt(5)), cell.weight.shape, cell.weight.dtype)
                 )
 
-    def construct(self, cnn_features, other_inputs, is_train=True):
+    def construct(self, cnn_features, other_inputs):
         images_mask, labels = other_inputs
         counting_mask = images_mask[:, :, ::self.ratio, ::self.ratio]
         
@@ -208,6 +208,6 @@ class CANHead(nn.Cell):
         counting_preds2, _ = self.counting_decoder2(cnn_features, counting_mask)
         counting_preds = (counting_preds1 + counting_preds2) / 2
 
-        word_probs = self.decoder(cnn_features, labels, counting_preds, images_mask, is_train=is_train)
+        word_probs = self.decoder(cnn_features, labels, counting_preds, images_mask)
 
         return word_probs, counting_preds, counting_preds1, counting_preds2
