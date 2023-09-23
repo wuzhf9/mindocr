@@ -186,25 +186,12 @@ class CANLoss(LossBase):
         self.cross = nn.loss.CrossEntropyLoss(reduction="none") if use_label_mask else nn.loss.CrossEntropyLoss()
         self.counting_loss = nn.loss.SmoothL1Loss(reduction="mean")
 
-    def _gen_counting_label(self, labels):
-        B, L = labels.shape
-        counting_labels = ops.zeros((B, self.out_channels))
-        for i in range(B):
-            for j in range(L):
-                k = int(labels[i][j])
-                if k in self.ignore:
-                    continue
-                else:
-                    counting_labels[i][k] += 1
-        return counting_labels
-
-    def construct(self, preds, labels, labels_mask):
+    def construct(self, preds, labels, labels_mask, counting_labels):
         word_probs = preds[0]
         counting_preds = preds[1]
         counting_preds1 = preds[2]
         counting_preds2 = preds[3]
 
-        counting_labels = self._gen_counting_label(labels)
         counting_loss = self.counting_loss(counting_preds, counting_labels) + \
                         self.counting_loss(counting_preds1, counting_labels) + \
                         self.counting_loss(counting_preds2, counting_labels)

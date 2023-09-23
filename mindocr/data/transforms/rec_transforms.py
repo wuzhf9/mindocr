@@ -16,6 +16,7 @@ __all__ = [
     "VisionLANLabelEncode",
     "CANLabelEncode",
     "CANPadding",
+    "CANGenCountingLabel",
     "RecResizeImg",
     "RecResizeNormForInfer",
     "SVTRRecResizeImg",
@@ -161,6 +162,27 @@ class CANLabelEncode(RecCTCLabelEncode):
         return data
 
 
+class CANGenCountingLabel:
+    def __init__(
+        self, out_channels, tag, **kwargs
+    ):
+        self.out_channels = out_channels
+        self.ignore = [0, 1, 107, 108, 109, 110] if tag else []
+
+    def __call__(self, data: dict):
+        label = data["label"]
+        L = label.shape[0]
+        counting_label = np.zeros((self.out_channels,), dtype=np.float32)
+        
+        for i in range(L):
+            k = label[i]
+            if k not in self.ignore:
+                counting_label[k] += 1
+
+        data["counting_label"] = counting_label
+        return data
+
+
 class CANPadding:
     def __init__(
         self, max_height, max_width, max_length, **kwargs
@@ -174,9 +196,9 @@ class CANPadding:
         L = data["label"].shape[0]
 
         image = np.zeros((C, self.max_height, self.max_width), dtype=data["image"].dtype)
-        image_mask = np.zeros((1, self.max_height, self.max_width))
+        image_mask = np.zeros((1, self.max_height, self.max_width), dtype=np.int32)
         label = np.zeros((self.max_length,), dtype=data["label"].dtype)
-        label_mask = np.zeros((self.max_length,))
+        label_mask = np.zeros((self.max_length,), dtype=np.int32)
 
         image[:, :H, :W] = data["image"]
         image_mask[:, :H, :W] = 1

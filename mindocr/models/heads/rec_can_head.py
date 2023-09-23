@@ -4,6 +4,8 @@ import mindspore as ms
 from mindspore import nn, ops
 from mindspore.common.initializer import initializer, HeUniform
 
+from ..utils import GRUCell
+
 __all__ = ["CANHead"]
 
 
@@ -118,7 +120,7 @@ class AttDecoder(nn.Cell):
 
         self.init_weight = nn.Dense(out_channels, hidden_size)
         self.embedding = nn.Embedding(word_num, input_size)
-        self.word_input_gru = nn.GRUCell(input_size, hidden_size)
+        self.word_input_gru = GRUCell(input_size, hidden_size)
         self.word_attention = Attention(hidden_size, attention_dim)
         self.encoder_feature_conv = nn.Conv2d(out_channels, attention_dim, kernel_size=word_conv_kernel,
                                               pad_mode="pad", padding=word_conv_kernel//2)
