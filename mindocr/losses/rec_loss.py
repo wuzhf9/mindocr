@@ -182,9 +182,8 @@ class CANLoss(LossBase):
         self.ratio = ratio
         self.out_channels = out_channels
         self.use_label_mask = use_label_mask
-        self.ignore = [0, 1, 107, 108, 109, 110] if tag else []
-        self.cross = nn.loss.CrossEntropyLoss(reduction="none") if use_label_mask else nn.loss.CrossEntropyLoss()
-        self.counting_loss = nn.loss.SmoothL1Loss(reduction="mean")
+        self.cross = nn.CrossEntropyLoss(reduction="none") if use_label_mask else nn.CrossEntropyLoss()
+        self.counting_loss = nn.SmoothL1Loss(reduction="mean")
 
     def construct(self, preds, labels, labels_mask, counting_labels):
         word_probs = preds[0]

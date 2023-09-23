@@ -196,9 +196,9 @@ class CANPadding:
         L = data["label"].shape[0]
 
         image = np.zeros((C, self.max_height, self.max_width), dtype=data["image"].dtype)
-        image_mask = np.zeros((1, self.max_height, self.max_width), dtype=np.int32)
+        image_mask = np.zeros((1, self.max_height, self.max_width), dtype=np.float32)
         label = np.zeros((self.max_length,), dtype=data["label"].dtype)
-        label_mask = np.zeros((self.max_length,), dtype=np.int32)
+        label_mask = np.zeros((self.max_length,), dtype=np.float32)
 
         image[:, :H, :W] = data["image"]
         image_mask[:, :H, :W] = 1

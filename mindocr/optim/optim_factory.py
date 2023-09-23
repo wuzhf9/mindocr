@@ -192,7 +192,7 @@ def create_optimizer(
     elif opt == "adadelta":
         opt_args = _collect_args(kwargs, nn.Adadelta)
         optimizer = nn.Adadelta(
-            params = params,
+            params=params,
             learning_rate=lr,
             weight_decay=weight_decay,
             loss_scale=loss_scale,

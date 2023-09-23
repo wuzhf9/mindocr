@@ -8,90 +8,89 @@ __all__ = ["Rec_DenseNet", "rec_densenet"]
 
 
 class Bottleneck(nn.Cell):
-    def __init__(self, nChannels, growthRate, use_dropout):
+    def __init__(self, nChannels, growthRate, dropout=0.0):
         super(Bottleneck, self).__init__()
         interChannels = 4 * growthRate
         self.bn1 = nn.BatchNorm2d(interChannels)
         self.conv1 = nn.Conv2d(nChannels, interChannels, kernel_size=1, pad_mode="pad")
         self.bn2 = nn.BatchNorm2d(growthRate)
         self.conv2 = nn.Conv2d(interChannels, growthRate, kernel_size=3, pad_mode="pad", padding=1)
-        self.use_dropout = use_dropout
-        self.dropout = nn.Dropout(p=0.2)
+        self.dropout = nn.Dropout(p=dropout)
+        self.relu = nn.ReLU()
 
     def construct(self, x):
-        out = ops.relu(self.bn1(self.conv1(x)))
-        if self.use_dropout:
-            out = self.dropout(out)
-        out = ops.relu(self.bn2(self.conv2(out)))
-        if self.use_dropout:
-            out = self.dropout(out)
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.dropout(out)
+        out = self.relu(self.bn2(self.conv2(out)))
+        out = self.dropout(out)
         out = ops.concat((x, out), axis=1)
         return out
     
 
 class SingleLayer(nn.Cell):
-    def __init__(self, nChannels, growthRate, use_dropout):
+    def __init__(self, nChannels, growthRate, dropout=0.0):
         super(SingleLayer, self).__init__()
         self.bn1 = nn.BatchNorm2d(nChannels)
         self.conv1 = nn.Conv2d(nChannels, growthRate, kernel_size=3, pad_mode="pad", padding=1)
-        self.use_dropout = use_dropout
-        self.dropout = nn.Dropout(p=0.2)
+        self.dropout = nn.Dropout(p=dropout)
+        self.relu = nn.ReLU()
 
     def construct(self, x):
-        out = self.conv1(ops.relu(x))
-        if self.use_dropout:
-            out = self.dropout(out)
+        out = self.conv1(self.relu(x))
+        out = self.dropout(out)
         out = ops.concat((x, out), axis=1)
         return out
     
 
 class Transition(nn.Cell):
-    def __init__(self, nChannels, nOutChannels, use_dropout):
+    def __init__(self, nChannels, nOutChannels, dropout=0.0):
         super(Transition, self).__init__()
         self.bn1 = nn.BatchNorm2d(nOutChannels)
         self.conv1 = nn.Conv2d(nChannels, nOutChannels, kernel_size=1, pad_mode="pad")
-        self.use_drouput = use_dropout
-        self.dropout = nn.Dropout(p=0.2)
+        self.dropout = nn.Dropout(p=dropout)
+        self.avg_pool = nn.AvgPool2d(kernel_size=2, stride=2, pad_mode="pad", ceil_mode=True)
+        self.relu = nn.ReLU()
 
     def construct(self, x):
-        out = ops.relu(self.bn1(self.conv1(x)))
-        if self.use_drouput:
-            out = self.dropout(out)
-        out = ops.avg_pool2d(out, kernel_size=2, stride=2, ceil_mode=True)
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.dropout(out)
+        out = self.avg_pool(out)
         return out
     
 @register_backbone_class
 class Rec_DenseNet(nn.Cell):
-    def __init__(self, inChannels, growthRate, reduction, use_bottleneck=True, use_dropout=True):
+    def __init__(self, inChannels, growthRate, reduction, use_bottleneck=True, dropout=0.0):
         super(Rec_DenseNet, self).__init__()
         nDenseBlocks = 16
         nChannels = 2 * growthRate
         self.out_channels = [684]
-        self.conv1 = nn.Conv2d(inChannels, nChannels, kernel_size=7, pad_mode="pad", padding=3, stride=2)
+        self.conv1 = nn.Conv2d(inChannels, nChannels, kernel_size=7, stride=2, pad_mode="pad", padding=3)
 
-        self.dense1 = self._make_dense(nChannels, growthRate, nDenseBlocks, use_bottleneck, use_dropout)
+        self.dense1 = self._make_dense(nChannels, growthRate, nDenseBlocks, use_bottleneck, dropout)
         nChannels += nDenseBlocks * growthRate
         nOutChannels = int(math.floor(nChannels * reduction))
-        self.trans1 = Transition(nChannels, nOutChannels, use_dropout)
+        self.trans1 = Transition(nChannels, nOutChannels, dropout)
 
         nChannels = nOutChannels
-        self.dense2 = self._make_dense(nChannels, growthRate, nDenseBlocks, use_bottleneck, use_dropout)
+        self.dense2 = self._make_dense(nChannels, growthRate, nDenseBlocks, use_bottleneck, dropout)
         nChannels += nDenseBlocks * growthRate
         nOutChannels = int(math.floor(nChannels * reduction))
-        self.trans2 = Transition(nChannels, nOutChannels, use_dropout)
+        self.trans2 = Transition(nChannels, nOutChannels, dropout)
 
         nChannels = nOutChannels
-        self.dense3 = self._make_dense(nChannels, growthRate, nDenseBlocks, use_bottleneck, use_dropout)
+        self.dense3 = self._make_dense(nChannels, growthRate, nDenseBlocks, use_bottleneck, dropout)
 
+        self.relu = nn.ReLU()
+        self.max_pool = nn.MaxPool2d(kernel_size=2, stride=2, pad_mode="pad", ceil_mode=True)
         self._init_weights()
 
-    def _make_dense(self, nChannels, growthRate, nDenseBlocks, use_bottleneck, use_dropout):
+    def _make_dense(self, nChannels, growthRate, nDenseBlocks, use_bottleneck, dropout):
         layers = []
         for _ in range(nDenseBlocks):
             if use_bottleneck:
-                layers.append(Bottleneck(nChannels, growthRate, use_dropout))
+                layers.append(Bottleneck(nChannels, growthRate, dropout))
             else:
-                layers.append(SingleLayer(nChannels, growthRate, use_dropout))
+                layers.append(SingleLayer(nChannels, growthRate, dropout))
             nChannels += growthRate
         return nn.SequentialCell(layers)
 
@@ -104,8 +103,8 @@ class Rec_DenseNet(nn.Cell):
 
     def construct(self, x):
         out = self.conv1(x)
-        out = ops.relu(out)
-        out = ops.max_pool2d(out, kernel_size=2, ceil_mode=True)
+        out = self.relu(out)
+        out = self.max_pool(out)
         out = self.dense1(out)
         out = self.trans1(out)
         out = self.dense2(out)
@@ -116,7 +115,7 @@ class Rec_DenseNet(nn.Cell):
 
 @register_backbone
 def rec_densenet(pretrained: bool = False, **kwargs):
-    model = Rec_DenseNet(inChannels=1, growthRate=24, reduction=0.5, use_bottleneck=True, use_dropout=True)
+    model = Rec_DenseNet(inChannels=1, growthRate=24, reduction=0.5, use_bottleneck=True, dropout=0.2)
 
     if pretrained:
         raise NotImplementedError("The default pretrained checkpoint for `rec_densenet` backbone does not exist.")

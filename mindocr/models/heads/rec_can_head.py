@@ -79,9 +79,15 @@ class PositionEmbeddingSine(nn.Cell):
 
         pos_x = x_embed[:, :, :, None] / dim_t
         pos_y = y_embed[:, :, :, None] / dim_t
-        pos_x = ops.stack((pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), axis=4).flatten(start_dim=3)
-        pos_y = ops.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), axis=4).flatten(start_dim=3)
-        pos = ops.concat((pos_y, pos_x), axis=3).permute(0, 3, 1, 2)
+        pos_x = ops.stack((ops.sin(pos_x[:, :, :, 0::2]),
+                           ops.cos(pos_x[:, :, :, 1::2])), 4)
+        x1, x2, x3, x4, x5 = pos_x.shape
+        pos_x = ops.reshape(pos_x, (x1, x2, x3, x4 * x5))
+        pos_y = ops.stack((ops.sin(pos_y[:, :, :, 0::2]),
+                           ops.cos(pos_y[:, :, :, 1::2])), 4)
+        y1, y2, y3, y4, y5 = pos_y.shape
+        pos_y = ops.reshape(pos_y, (y1, y2, y3, y4 * y5))
+        pos = ops.transpose(ops.concat((pos_y, pos_x), 3), (0, 3, 1, 2))
         return pos
 
 
@@ -96,8 +102,8 @@ class Attention(nn.Cell):
     def construct(self, cnn_features, cnn_features_trans, hidden, alpha_sum, image_mask=None):
         query = self.hidden_weight(hidden)
         alpha_sum_trans = self.attention_conv(alpha_sum)
-        coverage_alpha = self.attention_weight(alpha_sum_trans.permute(0, 2, 3, 1))
-        alpha_score = ops.tanh(query[:, None, None, :] + coverage_alpha + cnn_features_trans.permute(0, 2, 3, 1))
+        coverage_alpha = self.attention_weight(ops.transpose(alpha_sum_trans, (0, 2, 3, 1)))
+        alpha_score = ops.tanh(query[:, None, None, :] + coverage_alpha + ops.transpose(cnn_features_trans, (0, 2, 3, 1)))
         energy = self.alpha_convert(alpha_score)
         energy = energy - energy.max()
         energy_exp = ops.exp(energy.squeeze(-1))
@@ -112,11 +118,10 @@ class Attention(nn.Cell):
 class AttDecoder(nn.Cell):
     def __init__(
         self, input_size, hidden_size, out_channels, attention_dim,
-        word_num, counting_num, ratio, word_conv_kernel, dropout=0.0
+        word_num, counting_num, word_conv_kernel, dropout=0.0
     ):
         super(AttDecoder, self).__init__()
         self.word_num = word_num
-        self.ratio = ratio
 
         self.init_weight = nn.Dense(out_channels, hidden_size)
         self.embedding = nn.Embedding(word_num, input_size)
@@ -143,7 +148,6 @@ class AttDecoder(nn.Cell):
         batch_size, num_steps = labels.shape
         height, width = cnn_features.shape[2:]
 
-        images_mask = images_mask[:, :, ::self.ratio, ::self.ratio]
         pos_embedding = self.pos_embedding(images_mask[:, 0, :, :])
         word_probs = ops.zeros((batch_size, num_steps, self.word_num))
         word_alpha_sum = ops.zeros((batch_size, 1, height, width))
@@ -187,7 +191,7 @@ class CANHead(nn.Cell):
 
         self.counting_decoder1 = CountingDecoder(in_channels, out_channels, kernel_size=3)
         self.counting_decoder2 = CountingDecoder(in_channels, out_channels, kernel_size=5)
-        self.decoder = AttDecoder(**attdecoder_args, ratio=ratio)
+        self.decoder = AttDecoder(**attdecoder_args)
 
         self._init_weights()
 
@@ -204,10 +208,10 @@ class CANHead(nn.Cell):
 
     def construct(self, cnn_features, other_inputs):
         images_mask, labels = other_inputs
-        counting_mask = images_mask[:, :, ::self.ratio, ::self.ratio]
+        images_mask = images_mask[:, :, ::self.ratio, ::self.ratio]
         
-        counting_preds1, _ = self.counting_decoder1(cnn_features, counting_mask)
-        counting_preds2, _ = self.counting_decoder2(cnn_features, counting_mask)
+        counting_preds1, _ = self.counting_decoder1(cnn_features, images_mask)
+        counting_preds2, _ = self.counting_decoder2(cnn_features, images_mask)
         counting_preds = (counting_preds1 + counting_preds2) / 2
 
         word_probs = self.decoder(cnn_features, labels, counting_preds, images_mask)
