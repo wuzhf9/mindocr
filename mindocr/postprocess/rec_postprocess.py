@@ -570,5 +570,8 @@ class CANLabelDecode(RecCTCLabelDecode):
 
         if labels is None:
             return {"texts": text, "preds": pred_prob}
-        label = self.decode(labels[0])
-        return {"texts": text, "preds": pred_prob, "labels": label}
+        label = labels[0]
+        if not isinstance(label, np.ndarray):
+            label = label.asnumpy()
+        label = self.decode(label)
+        return {"texts": text, "preds": pred_idx, "labels": label}
