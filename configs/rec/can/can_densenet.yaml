@@ -3,7 +3,7 @@ system:
   distribute: True
   amp_level: 'O2'
   seed: 42
-  log_interval: 200
+  log_interval: 50
   val_while_train: True
   drop_overflow_update: False
 
@@ -95,6 +95,8 @@ train:
           is_hwc: True
           mean: [0, 0, 0]
           std: [255, 255, 255]
+      - CANResizeImg:
+          image_shape: [128, 536]
       - GrayImageChannelFormat:
           inverse: True 
       - CANLabelEncode:
@@ -106,10 +108,6 @@ train:
       - CANGenCountingLabel:
           out_channels: *word_num
           tag: True
-      - CANPadding:
-          max_height: 512
-          max_width: 2144
-          max_length: *max_text_len
 
     #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
     output_columns: ['image', 'image_mask', 'label', 'label_mask', 'counting_label']
@@ -136,7 +134,7 @@ eval:
     sample_ratio: 1.0
     shuffle: False
     filter_max_len: True
-    max_text_len: *max_text_len
+    max_text_len: 205
     transform_pipeline:
       - DecodeImage:
           channel_first: False
@@ -144,10 +142,12 @@ eval:
           is_hwc: True
           mean: [0, 0, 0]
           std: [255, 255, 255]
+      - CANResizeImg:
+          image_shape: [128, 536]
       - GrayImageChannelFormat:
           inverse: True 
       - CANLabelEncode:
-          max_text_len: *max_text_len
+          max_text_len: 205
           character_dict_path: *character_dict_path
           use_space_char: *use_space_char
           blank_at_last: *blank_at_last
@@ -155,10 +155,6 @@ eval:
       - CANGenCountingLabel:
           out_channels: *word_num
           tag: True
-      - CANPadding:
-          max_height: 320
-          max_width: 1760
-          max_length: 205
   
     #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
     output_columns: ['image', 'image_mask', 'label', 'label_mask', 'counting_label']

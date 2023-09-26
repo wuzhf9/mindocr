@@ -15,8 +15,8 @@ __all__ = [
     "RecMasterLabelEncode",
     "VisionLANLabelEncode",
     "CANLabelEncode",
-    "CANPadding",
     "CANGenCountingLabel",
+    "CANResizeImg",
     "RecResizeImg",
     "RecResizeNormForInfer",
     "SVTRRecResizeImg",
@@ -158,7 +158,15 @@ class CANLabelEncode(RecCTCLabelEncode):
         
         if char_indices is None:
             char_indices = []
-        data["label"] = np.array(char_indices, dtype=np.int32)
+
+        pad_label = np.zeros(self.max_text_len, dtype=np.int32)
+        label_mask = np.zeros(self.max_text_len, dtype=np.float32)
+
+        label = np.array(char_indices, dtype=np.int32)
+        pad_label[:len(char_indices)] = label
+        label_mask[:len(char_indices)] = 1
+        data["label"] = pad_label
+        data["label_mask"] = label_mask
         return data
 
 
@@ -180,36 +188,6 @@ class CANGenCountingLabel:
                 counting_label[k] += 1
 
         data["counting_label"] = counting_label
-        return data
-
-
-class CANPadding:
-    def __init__(
-        self, max_height, max_width, max_length, **kwargs
-    ):
-        self.max_height = max_height
-        self.max_width = max_width
-        self.max_length = max_length
-
-    def __call__(self, data: dict):
-        C, H, W = data["image"].shape
-        L = data["label"].shape[0]
-
-        image = np.zeros((C, self.max_height, self.max_width), dtype=data["image"].dtype)
-        image_mask = np.zeros((1, self.max_height, self.max_width), dtype=np.float32)
-        label = np.zeros((self.max_length,), dtype=data["label"].dtype)
-        label_mask = np.zeros((self.max_length,), dtype=np.float32)
-
-        image[:, :H, :W] = data["image"]
-        image_mask[:, :H, :W] = 1
-        label[:L] = data["label"]
-        label_mask[:L] = 1
-
-        data["image"] = image
-        data["image_mask"] = image_mask
-        data["label"] = label
-        data["label_mask"] = label_mask
-
         return data
 
 
@@ -527,6 +505,34 @@ def str2idx(
         return None
 
     return char_indices
+
+class CANResizeImg:
+    def __init__(self, image_shape, **kwargs):
+        self.imgH = image_shape[0]
+        self.imgW = image_shape[1]
+        self.ratio = self.imgW / float(self.imgH)
+
+    def __call__(self, data):
+        img = data["image"]
+        h, w, c = img.shape
+        ratio = w / float(h)
+
+        padding_img = np.zeros((self.imgH, self.imgW, c), dtype=img.dtype)
+        image_mask = np.zeros((1, self.imgH, self.imgW), dtype=np.float32)
+        if ratio > self.ratio:
+            resized_h = int(math.ceil(self.imgW / ratio))
+            resized_img = cv2.resize(img, (self.imgW, resized_h), interpolation=cv2.INTER_LINEAR)
+            padding_img[0:resized_h, :, :] = resized_img
+            image_mask[:, 0:resized_h, :] = 1
+        else:
+            resized_w = int(math.ceil(self.imgH * ratio))
+            resized_img = cv2.resize(img, (resized_w, self.imgH), interpolation=cv2.INTER_LINEAR)
+            padding_img[:, 0:resized_w, :] = resized_img
+            image_mask[:, :, 0:resized_w] = 1
+
+        data["image"] = padding_img
+        data["image_mask"] = image_mask
+        return data
 
 
 # TODO: reorganize the code for different resize transformation in rec task
