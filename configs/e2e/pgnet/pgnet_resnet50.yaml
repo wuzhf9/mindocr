@@ -1,0 +1,115 @@
+system:
+  mode: 0 # 0 for graph mode, 1 for pynative mode in MindSpore
+  distribute: True
+  amp_level: 'O0'
+  seed: 42
+  log_interval: 200
+  val_while_train: True
+  drop_overflow_update: False
+
+common:
+  character_dict_path: &character_dict_path ./mindocr/utils/dict/ic15_dict.txt
+  max_text_len: &max_text_len 50
+  max_text_nums: &max_text_nums 30
+  batch_size: &batch_size 14
+
+model:
+  type: e2e
+  transform: null
+  resume: False
+  backbone:
+    name: e2e_resnet50
+    pretrained: False
+
+  neck:
+    name: PGFPN
+  
+  head:
+    name: PGHead
+    character_dict_path: *character_dict_path
+
+train:
+  ema: True
+  ema_decay: 0.9999
+  clip_grad: True
+  clip_norm: 100.0
+  ckpt_save_dir: './tmp_pgnet'
+  dataset_sink_mode: False
+  pred_cast_fp32: True
+  dataset:
+    type: DetDataset
+    dataset_root: ./datasets/total_text # Optional, if set, dataset_root will be used as a prefix for data_dir
+    data_dir: train
+    label_file: train/train.txt
+    # label_file: # not required when using LMDBDataset
+    sample_ratio: 1.0
+    shuffle: True
+    transform_pipeline:
+      - DecodeImage:
+          img_mode: BGR
+          channel_first: False
+      - E2ELabelEncodeTrain:
+      - PGProcessTrain:
+          character_dict_path: *character_dict_path
+          max_text_len: *max_text_len
+          max_text_nums: *max_text_nums
+          tcl_len: 64
+          batch_size: *batch_size
+          use_resize: True
+          use_random_crop: False
+          min_crop_size: 24
+          min_text_size: 4
+          max_text_size: 512
+          point_gather_mode: align
+    
+    #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
+    output_columns: ['images', 'tcl_maps', 'tcl_label_maps', 'border_maps','direction_maps', 'training_masks', 'label_list', 'pos_list', 'pos_mask']
+    net_input_column_index: [0, 1, 2] # input indices for network forward func in output_columns
+    label_column_index: [2, 3, 4] # input indices marked as label
+
+  loader:
+      shuffle: True # TODO: tbc
+      batch_size: *batch_size
+      drop_remainder: True
+      max_rowsize: 16
+      num_workers: 8
+
+eval:
+  ckpt_load_path: ./tmp_pgnet/best.ckpt
+  dataset_sink_mode: False
+  pred_cast_fp32: True
+  dataset:
+    type: DetDataset
+    dataset_root: ./datasets/total_text # Optional, if set, dataset_root will be used as a prefix for data_dir
+    data_dir: test
+    label_file: test/test.txt
+    # label_file: # not required when using LMDBDataset
+    sample_ratio: 1.0
+    shuffle: False
+    transform_pipeline:
+      - DecodeImage:
+          img_mode: BGR
+          channel_first: False
+      - E2ELabelEncodeTest:
+          max_text_len: *max_text_len
+          character_dict_path: *character_dict_path
+          max_label_num: 53
+      - E2EResizeForTest:
+          max_side_len: 768
+      - NormalizeImage:
+          mean: [123.675, 116.28, 103.53]
+          std: [58.395, 57.12, 57.375]
+          is_hwc: True
+      - ToCHWImage:
+
+    #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
+    output_columns: ['image', 'shape', 'polys', 'texts', 'ignore_tags']
+    net_input_column_index: [0, 1, 2] # input indices for network forward func in output_columns
+    label_column_index: [2, 3, 4] # input indices marked as label
+
+  loader:
+      shuffle: False # TODO: tbc
+      batch_size: *batch_size
+      drop_remainder: False
+      max_rowsize: 16
+      num_workers: 8

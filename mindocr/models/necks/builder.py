@@ -1,10 +1,11 @@
 __all__ = ['build_neck']
-supported_necks = ['FPN', 'DBFPN', 'RNNEncoder', 'Select', 'Img2Seq', 'PSEFPN', 'EASTFPN', 'FCEFPN', 'MasterEncoder']
+supported_necks = ['FPN', 'DBFPN', 'RNNEncoder', 'Select', 'Img2Seq', 'PSEFPN', 'EASTFPN', 'FCEFPN', 'MasterEncoder', 'PGFPN']
 from .fpn import DBFPN, EASTFPN, FCEFPN, FPN, PSEFPN
 from .img2seq import Img2Seq
 from .master_encoder import MasterEncoder
 from .rnn import RNNEncoder
 from .select import Select
+from .pg_fpn import PGFPN
 
 
 def build_neck(neck_name, **kwargs):
