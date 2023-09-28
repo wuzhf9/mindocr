@@ -1,7 +1,7 @@
 system:
   mode: 0 # 0 for graph mode, 1 for pynative mode in MindSpore
   distribute: True
-  amp_level: 'O2'
+  amp_level: 'O0'
   seed: 42
   log_interval: 200
   val_while_train: True
@@ -12,7 +12,7 @@ common:
   use_space_char: &use_space_char False
   blank_at_last: &blank_at_last True
   lower: &lower False
-  batch_size: &batch_size 8
+  batch_size: &batch_size 2
   max_text_len: &max_text_len 97
   word_num: &word_num 111
   ratio: &ratio 16
@@ -136,7 +136,7 @@ eval:
     sample_ratio: 1.0
     shuffle: False
     filter_max_len: True
-    max_text_len: *max_text_len
+    max_text_len: 205
     transform_pipeline:
       - DecodeImage:
           channel_first: False
@@ -147,7 +147,7 @@ eval:
       - GrayImageChannelFormat:
           inverse: True 
       - CANLabelEncode:
-          max_text_len: *max_text_len
+          max_text_len: 205
           character_dict_path: *character_dict_path
           use_space_char: *use_space_char
           blank_at_last: *blank_at_last
