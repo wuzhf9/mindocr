@@ -1,4 +1,7 @@
+import math
+
 from mindspore import nn
+from mindspore.common.initializer import initializer, XavierUniform
 
 from ._registry import register_backbone, register_backbone_class
 
@@ -118,6 +121,14 @@ class E2EResNet50(nn.Cell):
                 blocks.append(block)
             stages.append(nn.SequentialCell(blocks))
         self.stages = nn.CellList(stages)
+        self._init_weights()
+    
+    def _init_weights(self):
+        for _, cell in self.cells_and_names():
+            if isinstance(cell, nn.Conv2d):
+                cell.weight.set_data(
+                    initializer(XavierUniform(), cell.weight.shape, cell.weight.dtype)
+                )
 
     def construct(self, x):
         outs = [x]

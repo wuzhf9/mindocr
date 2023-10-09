@@ -11,13 +11,14 @@ supported_losses = [
     "FCELoss",
     "SARLoss",
     "VisionLANLoss",
+    "PGLoss",
 ]
 
 from .abinet_loss import ABINetLoss
 from .cls_loss import CrossEntropySmooth
 from .det_loss import DBLoss, EASTLoss, FCELoss, PSEDiceLoss
 from .rec_loss import AttentionLoss, CTCLoss, SARLoss, VisionLANLoss
-
+from .e2e_loss import PGLoss
 
 def build_loss(name, **kwargs):
     """

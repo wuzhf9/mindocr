@@ -1,11 +1,12 @@
-from . import cls_metrics, det_metrics, rec_metrics
+from . import cls_metrics, det_metrics, rec_metrics, e2e_metrics
 from .cls_metrics import *
 from .det_metrics import *
 from .rec_metrics import *
+from .e2e_metrics import *
 
 __all__ = ["build_metric"]
 
-supported_metrics = det_metrics.__all__ + rec_metrics.__all__ + cls_metrics.__all__
+supported_metrics = det_metrics.__all__ + rec_metrics.__all__ + cls_metrics.__all__ + e2e_metrics.__all__
 
 
 def build_metric(config, device_num=1, **kwargs):

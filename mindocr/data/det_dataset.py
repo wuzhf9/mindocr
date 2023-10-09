@@ -106,7 +106,7 @@ class DetDataset(BaseDataset):
             data = run_transforms(data, transforms=self.transforms)
             output_tuple = tuple(data[k] for k in self.output_columns)
         except Exception as e:
-            _logger.warning(f"Error occurred while processing the image: {self.data_list[index]['img_path']}\n {e}")
+            # _logger.warning(f"Error occurred while processing the image: {self.data_list[index]['img_path']}\n {e}")
             return self[random.randrange(len(self.data_list))]  # return another random sample instead
 
         return output_tuple

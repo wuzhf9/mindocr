@@ -6,6 +6,7 @@ from . import (  # rec_abinet_postprocess,
     det_pse_postprocess,
     rec_abinet_postprocess,
     rec_postprocess,
+    e2e_pg_postprocess,
 )
 from .cls_postprocess import *
 from .det_db_postprocess import *
@@ -14,6 +15,7 @@ from .det_fce_postprocess import *
 from .det_pse_postprocess import *
 from .rec_abinet_postprocess import *
 from .rec_postprocess import *
+from .e2e_pg_postprocess import *
 
 __all__ = ["build_postprocess"]
 
@@ -25,6 +27,7 @@ supported_postprocess = (
     + cls_postprocess.__all__
     + rec_abinet_postprocess.__all__
     + det_fce_postprocess.__all__
+    + e2e_pg_postprocess.__all__
 )
 
 

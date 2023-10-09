@@ -1,4 +1,7 @@
+import math
+
 from mindspore import nn
+from mindspore.common.initializer import initializer, XavierUniform
 
 from ..backbones.e2e_resnet50 import ConvNormLayer
 
@@ -66,7 +69,8 @@ class PGFPN(nn.Cell):
                     in_channels=num_in_channels[k],
                     out_channels=num_out_channels[k],
                     kernel_size=num_kernel_sizes[k],
-                    stride=num_strides[k]
+                    stride=num_strides[k],
+                    act=True if j == 0 else False
                 )
                 convs.append(conv)
             conv_4567.append(nn.SequentialCell(convs))
@@ -114,6 +118,14 @@ class PGFPN(nn.Cell):
         )
 
         self.relu = nn.ReLU()
+        self._init_weights()
+
+    def _init_weights(self):
+        for _, cell in self.cells_and_names():
+            if isinstance(cell, (nn.Conv2d, nn.Conv2dTranspose)):
+                cell.weight.set_data(
+                    initializer(XavierUniform(), cell.weight.shape, cell.weight.dtype)
+                )
 
     def construct(self, x):
         c0, c1, c2, c3, c4, c5, c6 = x
@@ -133,8 +145,9 @@ class PGFPN(nn.Cell):
         for i in range(5):
             f[i] = self.conv_hs[i](f[i])
 
+        up = f[0]
         for i in range(4):
-            up = self.deconvs[i](f[i])
+            up = self.deconvs[i](up)
             up = up + f[i+1]
             up = self.relu(up)
             up = self.conv_gs[i](up)

@@ -1,4 +1,7 @@
+import math
+
 from mindspore import nn
+from mindspore.common.initializer import initializer, XavierUniform
 
 
 class ConvNormLayer(nn.Cell):
@@ -130,6 +133,14 @@ class PGHead(nn.Cell):
             )
         )
         self.conv_direct = nn.SequentialCell(conv_direct)
+        self._init_weights()
+        
+    def _init_weights(self):
+        for _, cell in self.cells_and_names():
+            if isinstance(cell, nn.Conv2d):
+                cell.weight.set_data(
+                    initializer(XavierUniform(), cell.weight.shape, cell.weight.dtype)
+                )
 
     def construct(self, x, target=None):
         f_score = self.conv_score(x)

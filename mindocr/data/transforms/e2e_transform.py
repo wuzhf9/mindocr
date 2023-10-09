@@ -6,7 +6,7 @@ from skimage.morphology._skeletonize import thin
 
 from .rec_transforms import RecCTCLabelEncode, str2idx
 
-__all__ = ["E2ELabelEncodeTrain", "E2ELabelEncodeTest", "PGProcessTrain", "E2EResizeForTest"]
+__all__ = ["E2ELabelEncodeTrain", "E2ELabelEncodeTest", "PGProcessTrain", "E2ECTCMaskForTrain", "E2EResizeForTest"]
 
 
 class E2ELabelEncodeTrain:
@@ -606,7 +606,7 @@ class PGProcessTrain:
             (
                 h,
                 w, ), dtype=np.float32)
-        direction_map = np.ones((h, w, 3)) * np.array([0, 0, 1]).reshape(
+        direction_map = np.ones((h, w, 3), dtype=np.float32) * np.array([0, 0, 1]).reshape(
             [1, 1, 3]).astype(np.float32)
 
         label_idx = 0
@@ -1175,35 +1175,39 @@ class PGProcessTrain:
         data['border_maps'] = border_maps
         data['direction_maps'] = direction_maps
         data['training_masks'] = training_masks
-        data['label_list'] = label_list
+        data['label_list'] = label_list.squeeze(axis=2)
         data['pos_list'] = pos_list
         data['pos_mask'] = pos_mask
         return data
     
 
-# class E2EPreprocessForTrain:
-#     def __init__(self, max_text_len, max_text_nums, tcl_bs, pad_num):
-#         self.max_text_len = max_text_len
-#         self.max_text_nums = max_text_nums
-#         self.tcl_bs = tcl_bs
-#         self.pad_num = pad_num
+class E2ECTCMaskForTrain:
+    def __init__(self, max_text_len, max_text_nums, pad_num, **kwargs):
+        self.max_text_len = max_text_len
+        self.max_text_nums = max_text_nums
+        self.pad_num = pad_num
 
-#     def org_tcl_rois(self, label_list_t, pos_list_t, pos_mask_t):
-#         pass
+    def __call__(self, data):
+        label_list = data["label_list"]
+        pos_mask = data["pos_mask"]
 
-#     def __call__(self, data):
-#         label_list = data["label_list"]
-#         pos_list = data["pos_list"]
-#         pos_mask = data["pos_mask"]
+        ctc_mask = np.zeros((self.max_text_nums,), dtype=np.float32)
+        for i in range(self.max_text_nums):
+            if pos_mask[i].any():
+                ctc_mask[i] = 1
+        data["ctc_mask"] = ctc_mask
 
-#         label_list_t, pos_list_t, pos_mask_t = [], [], []
-#         for i in range(self.max_text_nums):
-#             if pos_mask[i].any():
-#                 label_list_t.append(label_list[i])
-#                 pos_list_t.append(pos_list[i])
-#                 pos_mask_t.append(pos_mask[i])
-#         label_list, pos_list, pos_mask = self.org_tcl_rois(label_list_t, pos_list_t, pos_mask_t)
-
+        label_length = np.zeros((self.max_text_nums,), dtype=np.int32)
+        for i in range(self.max_text_nums):
+            k = 0
+            for j in range(self.max_text_len):
+                if label_list[i][j] != self.pad_num:
+                    k += 1
+                else:
+                    break
+            label_length[i] = k
+        data["label_len"] = label_length
+        return data
 
 
 class E2EResizeForTest:
@@ -1211,11 +1215,19 @@ class E2EResizeForTest:
         self.max_side_len = max_side_len
         self.valid_set = valid_set
 
-    def resize_image_for_totaltext(self, img, max_side_len=512):
+    def resize_image_for_totaltext(self, img):
+        max_h, max_w, ratio = 768, 1536, 1.25
         h, w, _ = img.shape
-        resize_w = 768
-        resize_h = 640
+        if h * ratio > self.max_side_len:
+            ratio = float(self.max_side_len) / h
+        resize_h = int(h * ratio)
+        resize_w = int(w * ratio)
+
+        max_stride = 128
+        resize_h = (resize_h + max_stride - 1) // max_stride * max_stride
+        resize_w = (resize_w + max_stride - 1) // max_stride * max_stride
         img = cv2.resize(img, (int(resize_w), int(resize_h)))
+        img = cv2.copyMakeBorder(img, 0, max_h-resize_h, 0, max_w-resize_w, cv2.BORDER_CONSTANT, value=[0, 0, 0])
         ratio_h = resize_h / float(h)
         ratio_w = resize_w / float(w)
         return img, ratio_h, ratio_w
@@ -1224,10 +1236,10 @@ class E2EResizeForTest:
         img = data["image"]
         src_h, src_w, _ = img.shape
         if self.valid_set == "totaltext":
-            img_resized, ratio_h, ratio_w = self.resize_image_for_totaltext(img, self.max_side_len)
+            img_resized, ratio_h, ratio_w = self.resize_image_for_totaltext(img)
         else:
             raise NotImplementedError("resize image for other dataset is not implemented.")
         data["image"] = img_resized
-        data["shape"] = np.array([src_h, src_w, ratio_h, ratio_w], dtype=np.float32)
+        data["shape_list"] = np.array([src_h, src_w, ratio_h, ratio_w], dtype=np.float32)
         return data
 

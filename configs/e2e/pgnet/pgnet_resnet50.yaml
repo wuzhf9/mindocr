@@ -12,6 +12,7 @@ common:
   max_text_len: &max_text_len 50
   max_text_nums: &max_text_nums 30
   batch_size: &batch_size 14
+  pad_num: &pad_num 36
 
 model:
   type: e2e
@@ -23,10 +24,39 @@ model:
 
   neck:
     name: PGFPN
-  
+
   head:
     name: PGHead
     character_dict_path: *character_dict_path
+
+postprocess:
+  name: PGNetPostProcess
+  character_dict_path: *character_dict_path
+  valid_set: totaltext
+  score_thresh: 0.5
+  point_gather_mode: align
+
+metric:
+  name: PGNetMetric
+  character_dict_path: *character_dict_path
+  main_indicator: e2e_fscore
+
+loss:
+  name: PGLoss
+  pad_num: *pad_num
+
+scheduler:
+  scheduler: cosine_decay
+  lr: 0.001
+  min_lr: 0.0
+  warmup_epochs: 50
+  warmup_factor: 0.0
+  decay_epochs: 550
+  num_epochs: 600
+
+optimizer:
+  opt: adam
+  weight_decay: 0.0001 
 
 train:
   ema: True
@@ -61,11 +91,15 @@ train:
           min_text_size: 4
           max_text_size: 512
           point_gather_mode: align
+      - E2ECTCMaskForTrain:
+          max_text_len: *max_text_len
+          max_text_nums: *max_text_nums
+          pad_num: *pad_num
     
     #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
-    output_columns: ['images', 'tcl_maps', 'tcl_label_maps', 'border_maps','direction_maps', 'training_masks', 'label_list', 'pos_list', 'pos_mask']
-    net_input_column_index: [0, 1, 2] # input indices for network forward func in output_columns
-    label_column_index: [2, 3, 4] # input indices marked as label
+    output_columns: ['images', 'tcl_maps', 'tcl_label_maps', 'border_maps', 'direction_maps', 'training_masks', 'label_list', 'pos_list', 'pos_mask', 'ctc_mask', 'label_len']
+    net_input_column_index: [0] # input indices for network forward func in output_columns
+    label_column_index: [1, 3, 4, 5, 6, 7, 8, 9, 10] # input indices marked as label
 
   loader:
       shuffle: True # TODO: tbc
@@ -103,13 +137,13 @@ eval:
       - ToCHWImage:
 
     #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
-    output_columns: ['image', 'shape', 'polys', 'texts', 'ignore_tags']
-    net_input_column_index: [0, 1, 2] # input indices for network forward func in output_columns
-    label_column_index: [2, 3, 4] # input indices marked as label
+    output_columns: ['image', 'shape_list', 'polys', 'texts', 'ignore_tags']
+    net_input_column_index: [0] # input indices for network forward func in output_columns
+    label_column_index: [1, 2, 3, 4] # input indices marked as label
 
   loader:
       shuffle: False # TODO: tbc
-      batch_size: *batch_size
+      batch_size: 1
       drop_remainder: False
       max_rowsize: 16
       num_workers: 8
