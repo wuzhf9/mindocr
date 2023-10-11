@@ -1,14 +1,15 @@
+import cv2
 import copy
 import json
 import numpy as np
 
 from .tokenizers.tokenizer import LayoutXLMTokenizer
 
-__all__ = ["VQATokenLabelEncode"]
+__all__ = ["VQATokenLabelEncode", "VQATokenPad", "VQASerTokenTruncate", "KieResizeImg"]
 
 
 def load_vqa_bio_label_maps(label_map_path):
-    with open(label_map_path, "r", encoding='utf-8') as fin:
+    with open(label_map_path, "r", encoding="utf-8") as fin:
         lines = fin.readlines()
     old_lines = [line.strip() for line in lines]
     lines = ["O"]
@@ -43,19 +44,21 @@ class VQATokenLabelEncode:
     Label encode for NLP VQA methods
     """
 
-    def __init__(self,
-                 class_path,
-                 cache_path,
-                 contains_re=False,
-                 add_special_ids=False,
-                 use_textline_bbox_info=True,
-                 order_method=None,
-                 infer_mode=False,
-                 ocr_engine=None,
-                 **kwargs):
+    def __init__(
+        self,
+        cache_dir,
+        class_path,
+        contains_re=False,
+        add_special_ids=False,
+        use_textline_bbox_info=True,
+        order_method=None,
+        infer_mode=False,
+        ocr_engine=None,
+        **kwargs
+    ):
         super(VQATokenLabelEncode, self).__init__()
         self.contains_re = contains_re
-        self.tokenizer = LayoutXLMTokenizer.from_pretrained(cache_path)
+        self.tokenizer = LayoutXLMTokenizer.from_pretrained(cache_dir)
         self.label2id_map, id2label_map = load_vqa_bio_label_maps(class_path)
         self.add_special_ids = add_special_ids
         self.infer_mode = infer_mode
@@ -115,7 +118,7 @@ class VQATokenLabelEncode:
         if train_re:
             ocr_info = self.filter_empty_contents(ocr_info)
 
-        height, width, _ = data['image'].shape
+        height, width, _ = data["image"].shape
 
         words_list = []
         bbox_list = []
@@ -132,7 +135,7 @@ class VQATokenLabelEncode:
             entity_id_to_index_map = {}
             empty_entity = set()
 
-        data['ocr_info'] = copy.deepcopy(ocr_info)
+        data["ocr_info"] = copy.deepcopy(ocr_info)
 
         for info in ocr_info:
             text = info["transcription"]
@@ -176,7 +179,7 @@ class VQATokenLabelEncode:
 
             # parse label
             if not self.infer_mode:
-                label = info['label']
+                label = info["label"]
                 gt_label = self._parse_label(label, encode_res)
 
             # construct entities for re
@@ -194,7 +197,7 @@ class VQATokenLabelEncode:
                 entities.append({
                     "start": len(input_ids_list),
                     "end": len(input_ids_list) + len(encode_res["input_ids"]),
-                    "label": 'O',
+                    "label": "O",
                 })
             input_ids_list.extend(encode_res["input_ids"])
             token_type_ids_list.extend(encode_res["token_type_ids"])
@@ -204,23 +207,23 @@ class VQATokenLabelEncode:
             if not self.infer_mode:
                 gt_label_list.extend(gt_label)
 
-        data['input_ids'] = input_ids_list
-        data['token_type_ids'] = token_type_ids_list
-        data['bbox'] = bbox_list
-        data['attention_mask'] = [1] * len(input_ids_list)
-        data['labels'] = gt_label_list
-        data['segment_offset_id'] = segment_offset_id
-        data['tokenizer_params'] = dict(
+        data["input_ids"] = input_ids_list
+        data["token_type_ids"] = token_type_ids_list
+        data["bbox"] = bbox_list
+        data["attention_mask"] = [1] * len(input_ids_list)
+        data["labels"] = gt_label_list
+        data["segment_offset_id"] = segment_offset_id
+        data["tokenizer_params"] = dict(
             padding_side=self.tokenizer.padding_side,
             pad_token_type_id=self.tokenizer.pad_token_type_id,
             pad_token_id=self.tokenizer.pad_token_id)
-        data['entities'] = entities
+        data["entities"] = entities
 
         if train_re:
-            data['relations'] = relations
-            data['id2label'] = id2label
-            data['empty_entity'] = empty_entity
-            data['entity_id_to_index_map'] = entity_id_to_index_map
+            data["relations"] = relations
+            data["id2label"] = id2label
+            data["empty_entity"] = empty_entity
+            data["entity_id_to_index_map"] = entity_id_to_index_map
         return data
 
     def trans_poly_to_bbox(self, poly):
@@ -232,7 +235,7 @@ class VQATokenLabelEncode:
 
     def _load_ocr_info(self, data):
         if self.infer_mode:
-            ocr_result = self.ocr_engine.ocr(data['image'], cls=False)[0]
+            ocr_result = self.ocr_engine.ocr(data["image"], cls=False)[0]
             ocr_info = []
             for res in ocr_result:
                 ocr_info.append({
@@ -242,7 +245,7 @@ class VQATokenLabelEncode:
                 })
             return ocr_info
         else:
-            info = data['label']
+            info = data["label"]
             # read text info
             info_dict = json.loads(info)
             return info_dict
@@ -265,3 +268,122 @@ class VQATokenLabelEncode:
             gt_label.extend([self.label2id_map[("i-" + label).upper()]] *
                             (len(encode_res["input_ids"]) - 1))
         return gt_label
+
+
+class VQATokenPad:
+    def __init__(
+        self,
+        max_seq_len=512,
+        return_attention_mask=True,
+        return_token_type_ids=True,
+        return_special_tokens_mask=False,
+        infer_mode=False,
+        **kwargs
+    ):
+        self.max_seq_len = max_seq_len
+        self.return_attention_mask = return_attention_mask
+        self.return_token_type_ids = return_token_type_ids
+        self.return_special_tokens_mask = return_special_tokens_mask
+        self.pad_token_label_id = -100
+        self.infer_mode = infer_mode
+
+    def __call__(self, data):
+        needs_to_be_padded = self.max_seq_len and len(data["input_ids"]) < self.max_seq_len
+
+        if needs_to_be_padded:
+            if "tokenizer_params" in data:
+                tokenizer_params = data.pop("tokenizer_params")
+            else:
+                tokenizer_params = dict(padding_side="right",
+                                        pad_token_type_id=0,
+                                        pad_token_id=1)
+
+            difference = self.max_seq_len - len(data["input_ids"])
+            if tokenizer_params["padding_side"] == "right":
+                if self.return_attention_mask:
+                    data["attention_mask"] = [1] * len(data["input_ids"]) + [0] * difference
+                if self.return_token_type_ids:
+                    data["token_type_ids"] = data["token_type_ids"] + \
+                                             [tokenizer_params["pad_token_type_id"]] * difference
+                if self.return_special_tokens_mask:
+                    data["special_tokens_mask"] = data["special_tokens_mask"] + [1] * difference
+                data["input_ids"] = data["input_ids"] + [tokenizer_params["pad_token_id"]] * difference
+                if not self.infer_mode:
+                    data["labels"] = data["labels"] + [self.pad_token_label_id] * difference
+                data["bbox"] = data["bbox"] + [[0, 0, 0, 0]] * difference
+            elif tokenizer_params["padding_side"] == "left":
+                if self.return_attention_mask:
+                    data["attention_mask"] = [0] * difference + [1] * len(data["input_ids"])
+                if self.return_token_type_ids:
+                    data["token_type_ids"] = [tokenizer_params["pad_token_type_id"]] * difference + \
+                                             data["token_type_ids"]
+                if self.return_special_tokens_mask:
+                    data["special_tokens_mask"] = [1] * difference + data["special_tokens_mask"]
+                data["input_ids"] = [tokenizer_params["pad_token_id"]] * difference + data["input_ids"]
+                if not self.infer_mode:
+                    data["labels"] = [self.pad_token_label_id] * difference + data["labels"]
+                data["bbox"] = [[0, 0, 0, 0]] * difference + data["bbox"]
+        else:
+            if self.return_attention_mask:
+                data["attention_mask"] = [1] * len(data["input_ids"])
+
+        for key in data:
+            if key in ["input_ids", "labels", "token_type_ids", "bbox", "attention_mask"]:
+                if self.infer_mode:
+                    if key != "labels":
+                        length = min(len(data[key]), self.max_seq_len)
+                        data[key] = data[key][:length]
+                    else:
+                        continue
+                data[key] = np.array(data[key], dtype="int32")
+        return data
+
+
+class VQASerTokenTruncate:
+    def __init__(self, max_seq_len=512, infer_mode=False, **kwargs):
+        self.max_seq_len = max_seq_len
+        self.infer_mode = infer_mode
+
+    def __call__(self, data):
+        encoded_inputs = {}
+        for key in data:
+            if key in ["input_ids", "labels", "token_type_ids",
+                       "bbox", "attention_mask", "label"]:
+                if self.infer_mode and key == "labels":
+                    encoded_inputs[key] = data[key]
+                else:
+                    encoded_inputs[key] = data[key][0:self.max_seq_len]
+            else:
+                encoded_inputs[key] = data[key]
+
+        return encoded_inputs
+
+
+class KieResizeImg:
+    def __init__(self, size=(640, 640), **kwargs):
+        self.size = size
+
+    def resize_image(self, img):
+        resize_h, resize_w = self.size
+        ori_h, ori_w = img.shape[:2]  # (h, w, c)
+        ratio_h = float(resize_h) / ori_h
+        ratio_w = float(resize_w) / ori_w
+        img = cv2.resize(img, (int(resize_w), int(resize_h)))
+        return img, (ratio_h, ratio_w)
+
+    def __call__(self, data):
+        img = data["image"]
+        if "polys" in data:
+            text_polys = data["polys"]
+
+        img_resize, (ratio_h, ratio_w) = self.resize_image(img)
+        if "polys" in data:
+            new_boxes = []
+            for box in text_polys:
+                new_box = []
+                for cord in box:
+                    new_box.append([cord[0] * ratio_w, cord[1] * ratio_h])
+                new_boxes.append(new_box)
+            data["polys"] = np.array(new_boxes, dtype=np.float32)
+        data["image"] = img_resize
+        return data

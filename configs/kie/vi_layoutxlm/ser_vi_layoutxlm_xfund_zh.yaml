@@ -9,7 +9,8 @@ system:
 
 commom:
   class_path: &class_path ./datasets/XFUND/class_list_xfun.txt
-  cache_path: &cache_path ./vi_layoutxlm_cache/models/layoutxlm-base-uncased
+  cache_dir: &cache_dir ./vi_layoutxlm_cache/models/layoutxlm-base-uncased
+  max_seq_len: &max_seq_len 512
 
 train:
   ema: True
@@ -31,16 +32,29 @@ train:
       - DecodeImage:
           channel_first: False
       - VQATokenLabelEncode: # Class handling label
+          cache_dir: *cache_dir
           class_path: *class_path
-          cache_path: *cache_path
           contains_re: False
           use_textline_bbox_info: True
           order_method: tb-yx
+      - VQATokenPad:
+          max_seq_len: *max_seq_len
+          return_attention_mask: True
+      - VQASerTokenTruncate:
+          max_seq_len: *max_seq_len
+      - KieResizeImg:
+          size: [224, 224]
+      - NormalizeImage:
+          mean: [123.675, 116.28, 103.53]
+          std: [58.395, 57.12, 57.375]
+          is_hwc: True
+          rgb_to_bgr: True
+      - ToCHWImage:
 
     #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
-    output_columns: ['image']
-    net_input_column_index: [0, 1, 2] # input indices for network forward func in output_columns
-    label_column_index: [2, 3, 4] # input indices marked as label
+    output_columns: ['image', 'input_ids', 'bbox', 'attention_mask', 'token_type_ids', 'labels']
+    net_input_column_index: [0] # input indices for network forward func in output_columns
+    label_column_index: [1, 2, 3, 4, 5] # input indices marked as label
 
   loader:
       shuffle: False # TODO: tbc
@@ -66,15 +80,28 @@ eval:
           channel_first: False
       - VQATokenLabelEncode: # Class handling label
           class_path: *class_path
-          cache_path: *cache_path
+          cache_dir: *cache_dir
           contains_re: False
           use_textline_bbox_info: True
           order_method: tb-yx
+      - VQATokenPad:
+          max_seq_len: *max_seq_len
+          return_attention_mask: True
+      - VQASerTokenTruncate:
+          max_seq_len: *max_seq_len
+      - KieResizeImg:
+          size: [224, 224]
+      - NormalizeImage:
+          mean: [123.675, 116.28, 103.53]
+          std: [58.395, 57.12, 57.375]
+          is_hwc: True
+          rgb_to_bgr: True
+      - ToCHWImage:
 
     #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
-    output_columns: ['image', 'image_mask', 'label', 'label_mask', 'counting_label']
-    net_input_column_index: [0, 1, 2] # input indices for network forward func in output_columns
-    label_column_index: [2, 3, 4] # input indices marked as label
+    output_columns: ['image', 'input_ids', 'bbox', 'attention_mask', 'token_type_ids', 'labels']
+    net_input_column_index: [0] # input indices for network forward func in output_columns
+    label_column_index: [1, 2, 3, 4, 5] # input indices marked as label
 
   loader:
       shuffle: False # TODO: tbc
