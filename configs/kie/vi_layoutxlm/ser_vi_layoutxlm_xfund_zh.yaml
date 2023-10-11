@@ -1,0 +1,84 @@
+system:
+  mode: 1 # 0 for graph mode, 1 for pynative mode in MindSpore
+  distribute: False
+  amp_level: 'O0'
+  seed: 42
+  log_interval: 200
+  val_while_train: True
+  drop_overflow_update: False
+
+commom:
+  class_path: &class_path ./datasets/XFUND/class_list_xfun.txt
+  cache_path: &cache_path ./vi_layoutxlm_cache/models/layoutxlm-base-uncased
+
+train:
+  ema: True
+  ema_decay: 0.9999
+  clip_grad: True
+  clip_norm: 100.0
+  ckpt_save_dir: './tmp_vi_layoutxlm'
+  dataset_sink_mode: False
+  pred_cast_fp32: True
+  dataset:
+    type: DetDataset
+    dataset_root: ./datasets/XFUND # Optional, if set, dataset_root will be used as a prefix for data_dir
+    data_dir: zh_train/image
+    label_file: zh_train/train.json
+    # label_file: # not required when using LMDBDataset
+    sample_ratio: 1.0
+    shuffle: False
+    transform_pipeline:
+      - DecodeImage:
+          channel_first: False
+      - VQATokenLabelEncode: # Class handling label
+          class_path: *class_path
+          cache_path: *cache_path
+          contains_re: False
+          use_textline_bbox_info: True
+          order_method: tb-yx
+
+    #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
+    output_columns: ['image']
+    net_input_column_index: [0, 1, 2] # input indices for network forward func in output_columns
+    label_column_index: [2, 3, 4] # input indices marked as label
+
+  loader:
+      shuffle: False # TODO: tbc
+      batch_size: 8
+      drop_remainder: True
+      max_rowsize: 16
+      num_workers: 8
+
+eval:
+  ckpt_load_path: ./tmp_vi_layoutxlm/best.ckpt
+  dataset_sink_mode: False
+  pred_cast_fp32: True
+  dataset:
+    type: DetDataset
+    dataset_root: ./datasets/XFUND # Optional, if set, dataset_root will be used as a prefix for data_dir
+    data_dir: zh_val/image
+    label_file: zh_val/val.json
+    # label_file: # not required when using LMDBDataset
+    sample_ratio: 1.0
+    shuffle: False
+    transform_pipeline:
+      - DecodeImage:
+          channel_first: False
+      - VQATokenLabelEncode: # Class handling label
+          class_path: *class_path
+          cache_path: *cache_path
+          contains_re: False
+          use_textline_bbox_info: True
+          order_method: tb-yx
+
+    #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
+    output_columns: ['image', 'image_mask', 'label', 'label_mask', 'counting_label']
+    net_input_column_index: [0, 1, 2] # input indices for network forward func in output_columns
+    label_column_index: [2, 3, 4] # input indices marked as label
+
+  loader:
+      shuffle: False # TODO: tbc
+      batch_size: 1
+      drop_remainder: False
+      max_rowsize: 16
+      num_workers: 8
