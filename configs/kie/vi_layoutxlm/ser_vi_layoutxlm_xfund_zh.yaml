@@ -11,6 +11,17 @@ commom:
   class_path: &class_path ./datasets/XFUND/class_list_xfun.txt
   cache_dir: &cache_dir ./vi_layoutxlm_cache/models/layoutxlm-base-uncased
   max_seq_len: &max_seq_len 512
+  num_classes: &num_classes 7
+
+model:
+  type: kie
+  transform: null
+  resume: False
+  backbone:
+    name: identity
+  head:
+    name: LayoutXLMForSer
+    num_classes: *num_classes
 
 train:
   ema: True
@@ -53,8 +64,8 @@ train:
 
     #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
     output_columns: ['image', 'input_ids', 'bbox', 'attention_mask', 'token_type_ids', 'labels']
-    net_input_column_index: [0] # input indices for network forward func in output_columns
-    label_column_index: [1, 2, 3, 4, 5] # input indices marked as label
+    net_input_column_index: [0, 1, 2, 3, 4] # input indices for network forward func in output_columns
+    label_column_index: [5] # input indices marked as label
 
   loader:
       shuffle: False # TODO: tbc
@@ -100,8 +111,8 @@ eval:
 
     #  the order of the dataloader list, matching the network input and the input labels for the loss function, and optional data for debug/visaulize
     output_columns: ['image', 'input_ids', 'bbox', 'attention_mask', 'token_type_ids', 'labels']
-    net_input_column_index: [0] # input indices for network forward func in output_columns
-    label_column_index: [1, 2, 3, 4, 5] # input indices marked as label
+    net_input_column_index: [0, 1, 2, 3, 4] # input indices for network forward func in output_columns
+    label_column_index: [5] # input indices marked as label
 
   loader:
       shuffle: False # TODO: tbc
