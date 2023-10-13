@@ -265,7 +265,7 @@ class LayoutXLMAttnOutput(nn.Cell):
 
     def construct(self, hidden_states, input_tensor):
         output = self.dense(hidden_states)
-        output = self.dropout(hidden_states)
+        output = self.dropout(output)
         output = self.layernorm(output + input_tensor)
         return output
 
@@ -453,15 +453,10 @@ class LayoutXLMEncoder(nn.Cell):
         rel_pos = self._cal_1d_pos_emb(hidden_states, position_ids) if self.has_relative_attention_bias else None
         rel_2d_pos = self._cal_2d_pos_emb(hidden_states, bbox) if self.has_spatial_attention_bias else None
 
-        hidden_save = dict()
-        hidden_save["input_hidden_states"] = hidden_states
-
         for i, layer_module in enumerate(self.layer):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-
-            hidden_save["input_attention_mask"] = attention_mask
             layer_outputs = layer_module(
                 hidden_states,
                 attention_mask,
@@ -472,9 +467,7 @@ class LayoutXLMEncoder(nn.Cell):
 
             hidden_states = layer_outputs[0]
 
-            hidden_save["{}_data".format(i)] = hidden_states
-
-        return hidden_states, hidden_save
+        return hidden_states
     
 
 class LayoutXLMPooler(nn.Cell):
@@ -530,10 +523,12 @@ class LayoutXLMModel(nn.Cell):
 
         self.encoder = LayoutXLMEncoder(config)
         self.pooler = LayoutXLMPooler(config.hidden_size, with_pool)
+        self.image_feature_pool_shape = config.image_feature_pool_shape
+        self.image_feature_pool_shape_size = config.image_feature_pool_shape[0] * config.image_feature_pool_shape[1]
 
     def _calc_text_embeddings(self, input_ids, bbox, position_ids, token_type_ids):
         words_embeddings = self.embeddings.word_embeddings(input_ids)
-        position_embeddings = self.embeddings.word_embeddings(position_ids)
+        position_embeddings = self.embeddings.position_embeddings(position_ids)
         spatial_position_embeddings = self.embeddings._calc_spatial_position_embeddings(bbox)
         token_type_embeddings = self.embeddings.token_type_embeddings(token_type_ids)
         embeddings = words_embeddings + position_embeddings + spatial_position_embeddings + token_type_embeddings
@@ -586,8 +581,8 @@ class LayoutXLMModel(nn.Cell):
     ):
         input_shape = ops.shape(input_ids)
         visual_shape = list(input_shape)
-        visual_shape[1] = self.config.image_feature_pool_shape[0] * self.config.image_feature_pool_shape[1]
-        visual_bbox = self._calc_visual_bbox(self.config.image_feature_pool_shape, bbox, visual_shape)
+        visual_shape[1] = self.image_feature_pool_shape_size
+        visual_bbox = self._calc_visual_bbox(self.image_feature_pool_shape, bbox, visual_shape)
 
         final_bbox = ops.concat((bbox, visual_bbox), axis=1)
         if attention_mask is None:
@@ -622,7 +617,7 @@ class LayoutXLMModel(nn.Cell):
         extended_attention_mask = final_attention_mask.unsqueeze(1).unsqueeze(2)
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
-        encoder_outputs = self.encoder(
+        encoder_output = self.encoder(
             final_emb,
             extended_attention_mask,
             output_attentions=output_attentions,
@@ -630,9 +625,8 @@ class LayoutXLMModel(nn.Cell):
             bbox=final_bbox,
             position_ids=final_position_ids
         )
-        sequence_output = encoder_outputs[0]
-        pooled_output = self.pooler(sequence_output)
-        return sequence_output, pooled_output, encoder_outputs[1]
+        pooled_output = self.pooler(encoder_output)
+        return encoder_output, pooled_output
 
 
 class LayoutXLMForTokenClassification(nn.Cell):
@@ -681,16 +675,7 @@ class LayoutXLMForTokenClassification(nn.Cell):
         sequence_output = self.dropout(sequence_output)
         logits = self.classifier(sequence_output)
 
-        hidden_states = {
-            f"hidden_states_{idx}": outputs[2][f"{idx}_data"]
-            for idx in range(self.layoutxlm.config.num_hidden_layers)
-        }
-        if self.training:
-            outputs = logits, hidden_states
-        else:
-            outputs = logits
-
-        return outputs
+        return logits
 
 
 class NLPBaseModel(nn.Cell):
@@ -755,7 +740,5 @@ class LayoutXLMForSer(NLPBaseModel):
             token_type_ids=others[3],
             position_ids=None,
         )
-        if self.training:
-            return output[0]
-        else:
-            return output
+        
+        return output
