@@ -11,7 +11,7 @@ common:
   character_dict_path: &character_dict_path ./mindocr/utils/dict/ic15_dict.txt
   max_text_len: &max_text_len 50
   max_text_nums: &max_text_nums 30
-  batch_size: &batch_size 14
+  batch_size: &batch_size 2
   pad_num: &pad_num 36
 
 model:
@@ -113,7 +113,7 @@ eval:
   dataset_sink_mode: False
   pred_cast_fp32: True
   dataset:
-    type: DetDataset
+    type: PGNetDataset
     dataset_root: ./datasets/total_text # Optional, if set, dataset_root will be used as a prefix for data_dir
     data_dir: test
     label_file: test/test.txt
