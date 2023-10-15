@@ -8,6 +8,7 @@ from .det_dataset import DetDataset, SynthTextDataset
 from .predict_dataset import PredictDataset
 from .rec_dataset import RecDataset
 from .rec_lmdb_dataset import LMDBDataset
+from .e2e_dataset import PGNetDataset
 
 __all__ = ["build_dataset"]
 _logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ supported_dataset_types = [
     "LMDBDataset",
     "SynthTextDataset",
     "PredictDataset",
+    "PGNetDataset",
 ]
 
 

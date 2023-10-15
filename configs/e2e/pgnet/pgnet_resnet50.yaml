@@ -67,7 +67,7 @@ train:
   dataset_sink_mode: False
   pred_cast_fp32: True
   dataset:
-    type: DetDataset
+    type: PGNetDataset
     dataset_root: ./datasets/total_text # Optional, if set, dataset_root will be used as a prefix for data_dir
     data_dir: train
     label_file: train/train.txt
