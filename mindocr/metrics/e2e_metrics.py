@@ -1,6 +1,7 @@
 import numpy as np
 from shapely.geometry import Polygon
 
+import mindspore as ms
 from mindspore import Tensor
 
 from ..postprocess.e2e_pg_postprocess import get_dict
@@ -526,4 +527,10 @@ class PGNetMetric:
 
     def eval(self):
         metrics = combine_results(self.results)
+        if self.all_reduce:
+            for key, value in metrics.items():
+                if key in ["total_num_gt", "total_num_det", "hit_str_count"]:
+                    metrics[key] = int(self.all_reduce(Tensor(value, dtype=ms.int32)).asnumpy())
+                else:
+                    metrics[key] = float((self.all_reduce(Tensor(value, dtype=ms.float32)) / self.device_num).asnumpy())
         return metrics
